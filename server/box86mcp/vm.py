@@ -639,7 +639,12 @@ class VM:
         return self.auto.call(f"cd load {drive} {self.visible(image)}")
 
     def load_floppy(self, img: str | os.PathLike, drive: int = 0) -> dict:
-        return self.auto.call(f"fdd load {drive} {img}")
+        """Insert a floppy image. 86Box answers ok even when it can't load one, so check it's in."""
+        reply = self.auto.call(f"fdd load {drive} {img}")
+        if not any(f["drive"] == drive for f in self.auto.info()["floppy"]):
+            raise AutomationError(f"86Box did not load the floppy image {img}; the log may say why:\n"
+                                  f"{self.log_tail(5)}")
+        return reply
 
 
 

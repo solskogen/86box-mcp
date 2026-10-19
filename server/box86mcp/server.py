@@ -1295,9 +1295,6 @@ def floppy_insert(image: str, drive: str = "A", write_protect: bool = False) -> 
     path = v.visible(image)
     index = 0 if drive.upper().startswith("A") else 1
     v.load_floppy(("wp://" if write_protect else "") + str(path), index)  # str: Path would collapse "//"
-    mounted = [f["file"] for f in v.auto.info()["floppy"] if f["drive"] == index]
-    if not mounted:
-        raise AutomationError(f"86Box did not mount {path} in {drive.upper()[0]}:")
     return f"inserted {path.name} in {drive.upper()[0]}:"
 
 
