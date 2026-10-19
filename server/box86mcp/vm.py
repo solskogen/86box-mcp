@@ -454,6 +454,9 @@ class VM:
                 self.auto.call("quit")
             except (AutomationError, OSError):
                 pass
+            # Hang up before waiting: on Windows, 86Box's exit waits for its automation thread, which
+            # sits in recv() until the client goes (shutdown() doesn't wake it there).
+            self.auto.close()
             try:
                 self.proc.wait(timeout)
             except subprocess.TimeoutExpired:
@@ -496,12 +499,15 @@ class VM:
         """Press the power button and let the guest shut itself down, in real time. True once 86Box
         has exited (and stop() has tidied up); False if it's still running after timeout seconds,
         released, because the guest ignored the button or hasn't finished."""
-        self.auto.quit_soft()
-        try:
-            self.let_cpu_run()
-            self.auto.release()  # the press is latched; the guest sees it once the CPU runs
-        except (AutomationError, OSError):
-            pass  # no button: 86Box is already powering off
+        # Run in real time first, then press, then hang up: nothing may follow quit soft. Without a
+        # power button 86Box powers off at once, and on Windows its listener still reads (see stop),
+        # takes the next request and waits forever for a CPU that has stopped. Calls after a False
+        # return reconnect.
+        self.auto.check_quit_soft()
+        self.let_cpu_run()
+        self.auto.release()
+        self.auto.call("quit soft")
+        self.auto.close()
         if not self._wait_exit(timeout):
             return False
         self.stop()
@@ -675,13 +681,16 @@ class AttachedVM(VM):
         self.auto.close()
 
     def _wait_exit(self, timeout: float) -> bool:
-        # No process to wait for: 86Box has gone when the connection fails.
+        # No process to wait for: 86Box has gone when the connection fails. Hang up between polls,
+        # or 86Box can't exit on Windows (see VM.stop).
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             try:
                 self.auto.status()
             except (AutomationError, OSError):
                 return True
+            finally:
+                self.auto.close()
             time.sleep(0.2)
         return False
 

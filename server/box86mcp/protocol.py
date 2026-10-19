@@ -103,6 +103,7 @@ class Automation:
         if self.sock:
             self.sock.close()
             self.sock = None
+        self._buf = b""
 
     def call(self, line: str) -> dict:
         if "\n" in line:
@@ -145,12 +146,16 @@ class Automation:
         """Turn fast forward on or off (None: just report it). The reply's ff is the state now."""
         return self.call("ff" if on is None else f"ff {'on' if on else 'off'}")
 
-    def quit_soft(self) -> dict:
-        """Press the machine's power button: ACPI, or the board's own, else a plain power-off."""
+    def check_quit_soft(self) -> None:
+        """Raise unless this 86Box understands quit soft."""
         # Before 86Box#8382, any "quit ..." was a hard quit. #8384 (ff, which status reports) was
         # merged after it, so a status with ff means quit soft is understood.
         if "ff" not in self.status():
             raise AutomationError("this 86Box predates 'quit soft' (86Box#8382); it would power off hard")
+
+    def quit_soft(self) -> dict:
+        """Press the machine's power button: ACPI, or the board's own, else a plain power-off."""
+        self.check_quit_soft()
         return self.call("quit soft")
 
     def step(self, ms: int) -> dict:
