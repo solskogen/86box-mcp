@@ -54,6 +54,7 @@ class _VMState:
         self.mouse_state: dict = {}
         self.record_dirs: list[Path] = []
         self.snapshots: dict[str, dict] = {}
+        self.last_dir: Path | None = None    # the VM folder last created or started under this name
 
 
 _vms: dict[str, _VMState] = {}          # by name; "main" unless a tool names another
@@ -69,19 +70,19 @@ def _group_of(name: str) -> str:
 
 def _save_current() -> None:
     st = _vms.setdefault(_current, _VMState())
-    st.vm, st.held, st.mouse_state, st.record_dirs, st.snapshots = (
-        _vm, _held, _mouse_state, _record_dirs, _snapshots)
+    st.vm, st.held, st.mouse_state, st.record_dirs, st.snapshots, st.last_dir = (
+        _vm, _held, _mouse_state, _record_dirs, _snapshots, _last_dir)
 
 
 def _select(name: str) -> None:
-    global _current, _vm, _held, _mouse_state, _record_dirs, _snapshots
+    global _current, _vm, _held, _mouse_state, _record_dirs, _snapshots, _last_dir
     if name == _current:
         return
     _save_current()
     st = _vms.setdefault(name, _VMState())
     _current = name
-    _vm, _held, _mouse_state, _record_dirs, _snapshots = (
-        st.vm, st.held, st.mouse_state, st.record_dirs, st.snapshots)
+    _vm, _held, _mouse_state, _record_dirs, _snapshots, _last_dir = (
+        st.vm, st.held, st.mouse_state, st.record_dirs, st.snapshots, st.last_dir)
 
 
 VM_PARAM_DOC = ("\n\nvm: which VM, by name, when the server runs more than one (vm_start(vm=\"p2\", ...) starts "
@@ -189,7 +190,9 @@ def vm_create(vm_dir: str, cylinders: int = 993, heads: int = 16, sectors: int =
     machine, with its first hard disk replaced by the new blank one. nvr is a saved CMOS (.nvr file,
     or a folder of them) so the BIOS boots without stopping at setup; by default the bundled one is
     used when the machine is the default 486DX2-66. The default geometry, 993/16/63, matches a 512 MB
-    CompactFlash card. Boot media: floppy_insert or cdrom_insert, then vm_start.
+    CompactFlash card. To boot from media: vm_start (held, so the machine hasn't run yet), then
+    floppy_insert or cdrom_insert, then step. The bundled CMOS boots from C: first, so once an
+    installer has partitioned the disk, change the boot sequence in BIOS setup to boot the floppy.
     """
     d = Path(vm_dir).expanduser()
     if (d / "86box.cfg").exists():
@@ -199,6 +202,8 @@ def vm_create(vm_dir: str, cylinders: int = 993, heads: int = 16, sectors: int =
         f.truncate(cylinders * heads * sectors * 512)
     write_config(d, cylinders, heads, sectors, template=config)
     cmos = prime_nvr(d, nvr)
+    global _last_dir
+    _last_dir = d.resolve()
     mb = cylinders * heads * sectors * 512 // (1024 * 1024)
     return f"created {d} ({machine_of(d)}) with a blank {mb} MB disk ({cylinders}/{heads}/{sectors}); {cmos}"
 
@@ -228,6 +233,8 @@ def dos_create_vm(vm_dir: str, base_image: str | None = None, cylinders: int = 9
     disk.write_text(img, "AUTOEXEC.BAT", autoexec)
     write_config(d, cylinders, heads, sectors, template=config)
     cmos = prime_nvr(d, nvr)
+    global _last_dir
+    _last_dir = d.resolve()
     mb = cylinders * heads * sectors * 512 // (1024 * 1024)
     return f"created {d} ({machine_of(d)}) with a {mb} MB DOS disk ({cylinders}/{heads}/{sectors}); {cmos}"
 
@@ -286,7 +293,12 @@ def _remember_vm_dir(vm_dir: Path) -> None:
         pass        # only a convenience
 
 
+_last_dir: Path | None = None   # the folder the selected VM last created or started
+
+
 def _default_vm_dir() -> str:
+    if _last_dir is not None:
+        return str(_last_dir)
     if _vm is not None and _vm.vm_dir is not None:
         return str(_vm.vm_dir)
     if os.environ.get("BOX86_VM_DIR"):
@@ -305,7 +317,7 @@ def _default_vm_dir() -> str:
 def vm_start(vm_dir: str | None = None, held: bool = True, window: bool | None = None, com1_log: bool = False,
              debugger: bool = False, binary: str | None = None, group: str | None = None) -> str:
     """Boot the 86Box machine whose 86box.cfg lives in vm_dir. Without vm_dir: the VM this session
-    last started, else $BOX86_VM_DIR, else the last VM started by any session.
+    last created or started, else $BOX86_VM_DIR, else the last VM started by any session.
 
     held=True (default) freezes emulated time between tool calls, for deterministic, turn-based control.
     window=True shows the 86Box window on the host's display so a person can watch (and also type),
@@ -321,7 +333,7 @@ def vm_start(vm_dir: str | None = None, held: bool = True, window: bool | None =
     group: the lockstep group (see vm_group); by default the VM's earlier one, else "default", so
     VMs started together step together.
     """
-    global _vm, _held
+    global _vm, _held, _last_dir
     if group is not None:
         _groups[_current] = group
     if vm_dir is None:
@@ -334,6 +346,7 @@ def vm_start(vm_dir: str | None = None, held: bool = True, window: bool | None =
     _vm = VM(vm_dir, binary=_binary) if _binary else VM(vm_dir)
     status = _vm.start(held=held, window=window, com1_log=com1_log, debugger=debugger)
     _held = held
+    _last_dir = _vm.vm_dir
     _remember_vm_dir(_vm.vm_dir)
     extras = (", windowed" if _vm.windowed else "") + (f", debugger on port {_vm.gdb_port}" if debugger else "")
     return (f"86Box {status.get('version')} ({_vm.binary}) running from {vm_dir} "
