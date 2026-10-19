@@ -349,6 +349,8 @@ class VM:
         # Through guard.py, which stops 86Box if this process dies without calling stop(): it holds
         # the read end of the stdin pipe, and only we hold the write end.
         guard = [sys.executable, str(Path(__file__).with_name("guard.py"))]
+        if window and os.name == "nt":
+            guard.append("--no-activate")   # show the window, but leave the focus where the user has it
         self._mem_bytes = None
         self.proc = subprocess.Popen(guard + args, stdin=subprocess.PIPE, stdout=log, stderr=subprocess.STDOUT,
                                      env=env, start_new_session=True,
