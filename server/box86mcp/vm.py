@@ -212,8 +212,8 @@ def configure_serial_capture(vm_dir: str | os.PathLike, port: int = 1) -> Path |
     lines = _ini_set(lines, "Ports (COM & LPT)", f"serial{port}_device", "file")
     lines = _ini_set(lines, section, "path", str(log))
     # An input file makes the backend raise DSR/DCD; without them the BIOS (INT 14h) refuses to send
-    # and DOS reports "Write fault error writing device COM1". /dev/null supplies no input.
-    lines = _ini_set(lines, section, "input_path", "/dev/null")
+    # and DOS reports "Write fault error writing device COM1". The null device supplies no input.
+    lines = _ini_set(lines, section, "input_path", os.devnull)
     # Write each byte through to the file, so serial_read sees it while the VM runs.
     lines = _ini_set(lines, section, "flush", "1")
     cfg.write_text("\n".join(lines) + "\n")

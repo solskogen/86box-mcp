@@ -177,7 +177,16 @@ def test_tcp_transport_requires_token(tmp_path, monkeypatch):
     try:
         assert vm.endpoint.startswith("tcp:127.0.0.1:")
         assert vm.auto.wait_text("C:\\>", 60000)["matched"]  # the authenticated client works
-        assert oct(os.stat(vm.token_file).st_mode & 0o777) == "0o600"
+        if os.name == "nt":
+            # No mode bits here: the token is owner-only through the ACL of the run directory, which
+            # tempfile.mkdtemp restricts to its owner (Python 3.12.4 and later).
+            import re
+            import subprocess
+
+            acl = subprocess.run(["icacls", vm.token_file], capture_output=True, text=True).stdout
+            assert not re.search(r"(Users|Authenticated Users|Everyone):", acl), acl
+        else:
+            assert oct(os.stat(vm.token_file).st_mode & 0o777) == "0o600"
         host, port = vm.endpoint[4:].rsplit(":", 1)
         vm.auto.close()  # one client at a time
         for first_line in (b"status\n", b"auth 0000\n"):

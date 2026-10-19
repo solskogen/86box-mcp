@@ -339,6 +339,9 @@ def main() -> None:
     if a.cmd == "serve":
         asyncio.run(serve(a.sock, a.record, a.out))
     elif a.cmd == "call":
+        # Screen text has box drawing and the like, which Windows' ANSI code page (what Python
+        # writes to a pipe there) can't encode.
+        sys.stdout.reconfigure(encoding="utf-8")
         sys.exit(call(a.sock, a.tool, json.loads(a.args)))
     elif a.cmd == "stop":
         call(a.sock, "__stop__", {})

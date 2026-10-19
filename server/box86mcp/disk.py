@@ -80,9 +80,10 @@ def make_dos_disk(dest: str | os.PathLike, base_img: str | os.PathLike,
         base = f"{base_img}@@{base_off}"
         for name in ("IO.SYS", "MSDOS.SYS", "COMMAND.COM"):
             local = Path(tmp) / name
-            # -m both ways: the files keep the base image's dates rather than today's.
-            subprocess.run([_tool("mcopy"), "-m", "-i", base, f"::{name}", str(local)], check=True,
-                           capture_output=True, env=MTOOLS_ENV)
+            # -m both ways: the files keep the base image's dates rather than today's. The target is
+            # a bare name in cwd: mtools takes a Windows path's "F:" for one of its own drives.
+            subprocess.run([_tool("mcopy"), "-m", "-i", base, f"::{name}", name], check=True,
+                           capture_output=True, env=MTOOLS_ENV, cwd=tmp)
             subprocess.run([_tool("mcopy"), "-m", "-i", part, str(local), f"::{name}"], check=True,
                            capture_output=True, env=MTOOLS_ENV)
         subprocess.run([_tool("mattrib"), "-i", part, "+h", "+s", "+r", "::IO.SYS", "::MSDOS.SYS"],
