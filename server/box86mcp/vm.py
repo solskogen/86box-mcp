@@ -318,7 +318,12 @@ class VM:
         if log:
             self.serial_logs[1] = log
             self.serial_offsets[1] = 0
-        args = [str(self.binary), "-P", str(self.vm_dir), "-N", "--automation", self.endpoint]
+        # 86Box rewrites its global settings file at every start: give it one of its own, so a run
+        # leaves the user's alone, with the confirmations off (86Box only reads them from there;
+        # headless, they'd be dialogs nobody sees).
+        global_cfg = self.run_dir / "86box_global.cfg"
+        global_cfg.write_text("[Emulator]\nconfirm_exit = 0\nconfirm_reset = 0\nconfirm_save = 0\n")
+        args = [str(self.binary), "-P", str(self.vm_dir), "-O", str(global_cfg), "-N", "--automation", self.endpoint]
         if self.roms:
             args += ["-R", str(self.roms)]
         if self.token_file:
